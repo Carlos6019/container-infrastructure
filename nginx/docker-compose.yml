@@ -1,7 +1,7 @@
 services:
   nginx:
     image: $NGINX_VERSION
-    container_name: nginx-test
+    container_name: $NGINX_NAME
     restart: always
     ports:
       - "$NGINX_HOST_PORT"
