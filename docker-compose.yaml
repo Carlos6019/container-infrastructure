@@ -1,0 +1,21 @@
+services:
+  nginx:
+    image: $NGINX_VERSION
+    container_name: $NGINX_NAME
+    restart: always
+    ports:
+      - "$NGINX_HOST_PORT"
+      - "443:443"
+    volumes:
+      - $NGINX_CONF_PATH:/etc/nginx/nginx.conf
+      - nginx-logs:/var/log/nginx
+    networks:
+      - nginx-network
+volumes:
+  nginx-logs:
+    driver: local
+
+networks:
+  nginx-network:
+    driver: bridge
+
