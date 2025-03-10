@@ -1,0 +1,124 @@
+name: Infrastructure V1 deployment
+run-name: ${{ github.actor }} is deploying Infrastructure V1  ${{ github.repository }} 🚀
+on:
+  push:
+    branches:
+      - staging
+
+jobs:
+  TerraformInit:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.1.5
+      
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v3.0.0
+
+    - name: Set environment to deploy
+      if: github.ref == 'refs/heads/staging'
+      run: |
+        echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+    
+    - name: Set environment to deploy
+      if: github.ref == 'refs/heads/production'
+      run: |
+        echo "ENVIRONMENT=production" >> $GITHUB_ENV
+    
+    - name: Create SSH Key
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private.key
+        chmod 400 private.key
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY_GITHUB_ACTIONS }}
+
+    - name: Terraform Init
+      run: |
+        eval `ssh-agent -s`
+        ssh-add private.key
+        terraform init
+        terraform --version
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+
+    - name: Terraform Validate
+      run: |
+        terraform validate
+      continue-on-error: false
+
+    - name: Terraform Plan
+      run: |
+        terraform plan -var-file=./env/$ENVIRONMENT/env.tfvars -out=deploymentplan.tfplan
+        ls -ltr
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
+      continue-on-error: false
+
+    - name: Upload plan
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: terraform-plan
+        path: deploymentplan.tfplan
+        retention-days: 1
+
+  TerraformApply:
+    needs: TerraformInit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.1.5
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v3.0.0
+
+    - name: Set environment to deploy
+      if: github.ref == 'refs/heads/staging'
+      run: |
+        echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+
+    - name: Set environment to deploy
+      if: github.ref == 'refs/heads/production'
+      run: |
+        echo "ENVIRONMENT=production" >> $GITHUB_ENV
+
+    - name: Create SSH Key
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private.key
+        chmod 400 private.key
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY_GITHUB_ACTIONS }}
+
+    - name: Terraform Init
+      run: |
+        eval `ssh-agent -s`
+        ssh-add private.key
+        terraform init
+        terraform --version
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+
+    - name: Download plan
+      uses: actions/download-artifact@v4.1.7
+      with:
+        name: terraform-plan
+
+    - name: Test artifact download
+      run: |
+        echo "Downloaded plan: $(ls -ltr deploymentplan.tfplan)"
+        ls -ltr
+
+    - name: Terraform Apply
+      run: |
+        terraform apply -auto-approve deploymentplan.tfplan
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
